@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.ltecosta.notification-center",
+  "name": "Notification Center",
+  "version": "1.0.0",
+  "author": "Lucas Costa",
+  "license": "MIT",
+  "description": "Browse, search, open and remove the notifications Omarchy kept from the last 24 hours, see which ones you missed and control Do Not Disturb from the bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification Center",
+    "description": "Notification history by day with search, app filters, a missed count on the bell, open on click, remove one by one, replay on screen and Do Not Disturb.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "barLabel": "Missed"
+    },
+    "schema": [
+      {
+        "key": "barLabel",
+        "type": "enum",
+        "label": "Bar label",
+        "options": [
+          "Missed",
+          "None"
+        ],
+        "defaultValue": "Missed",
+        "description": "Show the number of missed notifications next to the bar icon."
+      }
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "title": "Notifications",
+  "hero.count": {
+    "one": "%1 in 24 hours",
+    "other": "%1 in 24 hours"
+  },
+  "hero.empty": "Nothing in the last 24 hours",
+  "hero.missed": {
+    "one": "%1 missed",
+    "other": "%1 missed"
+  },
+  "dnd.label": "Silence",
+  "dnd.on": "Do Not Disturb is on; notifications go straight to this list (d)",
+  "dnd.off": "Turn on Do Not Disturb (d)",
+  "search.placeholder": "Search  /",
+  "filter.all": "All",
+  "filter.tooltip": "Show only %1 (%2)",
+  "day.today": "TODAY",
+  "day.yesterday": "YESTERDAY",
+  "day.earlier": "EARLIER",
+  "time.now": "now",
+  "time.minutes": {
+    "one": "%1 min ago",
+    "other": "%1 min ago"
+  },
+  "time.hours": {
+    "one": "%1 h ago",
+    "other": "%1 h ago"
+  },
+  "time.days": {
+    "one": "%1 day ago",
+    "other": "%1 days ago"
+  },
+  "reason.expired": "missed",
+  "reason.silenced": "silenced",
+  "entry.expand": "Show all of it (Space)",
+  "entry.collapse": "Show less (Space)",
+  "entry.remove": "Remove from the list (x)",
+  "entry.new": "New since you last looked",
+  "empty.all": "No notifications in the last 24 hours.",
+  "empty.app": "No notifications from %1.",
+  "empty.search": "Nothing matches “%1”.",
+  "action.show": "Show on screen",
+  "action.show.tooltip": "Put the last 6 notifications back on screen, with their actions (r)",
+  "action.clear": "Clear all",
+  "action.clear.tooltip": "Empty this list; Omarchy's own history is kept",
+  "action.undo": "Undo",
+  "action.undo.tooltip": "Bring back what was just removed (u)",
+  "notice.removed": "Removed · u to undo",
+  "notice.cleared": {
+    "one": "Cleared %1 notification · u to undo",
+    "other": "Cleared %1 notifications · u to undo"
+  },
+  "notice.nothing": "This notification has nothing to open",
+  "error.unreadable": "Omarchy's notification history could not be read",
+  "error.service": "The notification service did not answer",
+  "footer": "Enter opens · Space expands · x removes · / searches. Omarchy keeps up to 100 notifications for 24 hours.",
+  "tooltip.idle": "Notifications",
+  "tooltip.missed": {
+    "one": "%1 missed notification",
+    "other": "%1 missed notifications"
+  },
+  "tooltip.dnd": "Do Not Disturb is on"
+}
