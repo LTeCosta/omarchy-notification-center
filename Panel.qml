@@ -45,6 +45,8 @@ Panel {
   // Enter and Space both arrive as activateRequested; Enter says so first.
   property bool enterPressed: false
   property bool wasOpened: false
+  // The search field holds the keyboard only after / or a click on it.
+  property bool searchWanted: false
   // A reloaded or moved widget briefly overlaps its old instance; register
   // the IPC target only after the old one has released it.
   property bool ipcReady: false
@@ -221,10 +223,12 @@ Panel {
   function focusSearch() {
     cursorActive = false
     cursorItem = null
+    searchWanted = true
     searchField.forceActiveFocus()
   }
 
   function leaveSearch(toList) {
+    searchWanted = false
     keyCatcher.forceActiveFocus()
     if (!toList) return
     var items = navigationItems()
@@ -320,7 +324,8 @@ Panel {
 
   function stateIpc() {
     return JSON.stringify({ opened: opened, entries: kept.length, listed: rows.length, missed: missed, dnd: dnd,
-      error: errorKey || history.error, filter: appFilter, query: query, hidden: marks.hidden.length,
+      error: errorKey || history.error, filter: appFilter, query: query, search_focused: searchField.activeFocus,
+      hidden: marks.hidden.length,
       cleared_ts: marks.clearedTs, seen_ts: marks.seenTs, seen_before: seenBefore, missed_at_open: missedAtOpen })
   }
 
@@ -338,6 +343,7 @@ Panel {
     errorKey = ""
     undoMarks = null
     searchField.text = ""
+    searchWanted = false
     if (opened) {
       tick()
       refresh()
@@ -561,6 +567,14 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             onTextChanged: root.query = text
+            // Typing belongs to the panel's shortcuts until / or a click asks
+            // for the search; focus that reaches the field any other way, as
+            // when the panel opens, goes back to them.
+            onPressed: root.searchWanted = true
+            onActiveFocusChanged: {
+              if (activeFocus && !root.searchWanted) Qt.callLater(function() { root.leaveSearch(false) })
+              else if (!activeFocus) root.searchWanted = false
+            }
             Keys.onPressed: function(event) {
               if (event.key === Qt.Key_Escape) {
                 if (text !== "") text = ""

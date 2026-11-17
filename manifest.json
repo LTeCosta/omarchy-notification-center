@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.ltecosta.notification-center",
   "name": "Notification Center",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Lucas Costa",
   "license": "MIT",
   "description": "Browse, search, open and remove the notifications Omarchy kept from the last 24 hours, see which ones you missed and control Do Not Disturb from the bar.",

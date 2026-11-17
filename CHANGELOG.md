@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Typing in the open panel runs its shortcuts (`x`, `u`, `d`, `r`, the filter digits) instead of searching; the search field takes the keyboard only after `/` or a click on it.
+
 ## 1.0.0
 
 - Bell on the bar with the number of missed notifications (timed out or silenced while you were away) and a crossed bell during Do Not Disturb; a middle click toggles Do Not Disturb.
