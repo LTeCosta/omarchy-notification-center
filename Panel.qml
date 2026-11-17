@@ -30,8 +30,9 @@ Panel {
   property bool savePending: false
   // The seen mark as it was when the panel opened: newer rows get a dot.
   property real seenBefore: 0
-  // The marks before the last removal or clear, while it can be undone.
+  // The marks before the last removal, clear or read all, while it can be undone.
   property var undoMarks: null
+  property real undoSeenBefore: 0
   property real now: Date.now() / 1000
   property real todayStart: startOfToday()
   property string appFilter: ""
@@ -109,6 +110,7 @@ Panel {
   function tooltip() {
     var lines = [missed > 0 ? strings.tn("tooltip.missed", missed).arg(Commons.I18n.formatNumber(missed)) : strings.t("tooltip.idle")]
     if (dnd) lines.push(strings.t("tooltip.dnd"))
+    lines.push(strings.t("tooltip.clicks"))
     return lines.join("\n")
   }
 
@@ -143,10 +145,24 @@ Panel {
     saveMarks()
   }
 
+  function rememberUndo() {
+    undoMarks = marks
+    undoSeenBefore = seenBefore
+  }
+
+  function readAll() {
+    if (Model.unreadCount(entries, marks, seenBefore) === 0 && missed === 0) return
+    rememberUndo()
+    marks = Model.markAllRead(marks, entries)
+    seenBefore = Math.max(seenBefore, marks.readTs)
+    saveMarks()
+    say("notice.read", 0)
+  }
+
   function removeEntry(entry) {
     if (!entry) return
     var index = navigationItems().indexOf(cursorItem)
-    undoMarks = marks
+    rememberUndo()
     marks = Model.hide(marks, entry.id, entries)
     saveMarks()
     say("notice.removed", 0)
@@ -156,7 +172,7 @@ Panel {
   function clearList() {
     if (kept.length === 0) return
     var count = kept.length
-    undoMarks = marks
+    rememberUndo()
     marks = Model.withMarks(marks, { clearedTs: entries[0].closedTs, hidden: [] })
     appFilter = ""
     saveMarks()
@@ -167,6 +183,7 @@ Panel {
   function undo() {
     if (!undoMarks) return
     marks = Model.withMarks(undoMarks, { seenTs: marks.seenTs })
+    seenBefore = undoSeenBefore
     undoMarks = null
     saveMarks()
     say("", 0)
@@ -242,6 +259,7 @@ Panel {
   function navigationItems() {
     var items = []
     collect(content, items)
+    collect(footerArea, items)
     return items
   }
 
@@ -289,9 +307,15 @@ Panel {
     scrollIntoView(items[next])
   }
 
+  function inList(item) {
+    for (var parentItem = item; parentItem; parentItem = parentItem.parent)
+      if (parentItem === content) return true
+    return false
+  }
+
   function scrollIntoView(item) {
     Qt.callLater(function() {
-      if (!item) return
+      if (!item || !inList(item)) return
       var top = item.mapToItem(scroller.contentItem, 0, 0).y
       var margin = Style.space(6)
       if (top < scroller.contentY + margin) scroller.contentY = Math.max(0, top - margin)
@@ -315,6 +339,7 @@ Panel {
     else if (value === "d" || value === "D") toggleDnd()
     else if (value === "r" || value === "R") showOnScreen()
     else if (value === "u" || value === "U") undo()
+    else if (value === "a" || value === "A") readAll()
     else if (value >= "0" && value <= "9") {
       var values = filterValues()
       var index = Number(value)
@@ -326,7 +351,7 @@ Panel {
     return JSON.stringify({ opened: opened, entries: kept.length, listed: rows.length, missed: missed, dnd: dnd,
       error: errorKey || history.error, filter: appFilter, query: query, search_focused: searchField.activeFocus,
       hidden: marks.hidden.length,
-      cleared_ts: marks.clearedTs, seen_ts: marks.seenTs, seen_before: seenBefore, missed_at_open: missedAtOpen })
+      cleared_ts: marks.clearedTs, seen_ts: marks.seenTs, read_ts: marks.readTs, seen_before: seenBefore, missed_at_open: missedAtOpen })
   }
 
   implicitWidth: button.implicitWidth
@@ -374,6 +399,7 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function state(): string { return root.stateIpc() }
+    function readAll(): string { root.readAll(); return "ok" }
   }
 
   FileView {
@@ -467,6 +493,7 @@ Panel {
     activeColor: Color.accent
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.MiddleButton) root.toggleDnd()
+      else if (buttonCode === Qt.RightButton) root.readAll()
       else root.toggle()
     }
   }
@@ -479,7 +506,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(420))
-    contentHeight: panel.fittedContentHeight(content.implicitHeight, Style.space(720))
+    contentHeight: panel.fittedContentHeight(content.implicitHeight + Style.space(10) + footerArea.implicitHeight, Style.space(720))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -495,7 +522,11 @@ Panel {
 
       Flickable {
         id: scroller
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: footerArea.top
+        anchors.bottomMargin: Style.space(10)
         contentWidth: width
         contentHeight: content.implicitHeight
         clip: true
@@ -667,7 +698,7 @@ Panel {
                   fresh: group.modelData.fresh
                   expanded: root.expandedIds[entry.id] === true
                   timeText: root.agoText(entry.ts)
-                  reasonText: entry.missed ? strings.t("reason." + entry.reason) : ""
+                  reasonText: group.modelData.unread ? strings.t("reason." + entry.reason) : ""
                   expandTooltip: expanded ? strings.t("entry.collapse") : strings.t("entry.expand")
                   removeTooltip: strings.t("entry.remove")
                   freshTooltip: strings.t("entry.new")
@@ -696,61 +727,87 @@ Panel {
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
           }
+        }
+      }
 
-          PanelSeparator { foreground: root.foreground }
+      // Always in view below the list, however long it grows.
+      Column {
+        id: footerArea
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        spacing: Style.space(10)
 
-          // ---------- Actions ----------
-          Row {
-            id: actions
-            width: parent.width
-            spacing: Style.space(6)
-            readonly property real buttonWidth: (width - spacing) / 2
+        PanelSeparator { foreground: root.foreground }
 
-            Button {
-              id: showButton
-              readonly property bool keyboardEnabled: visible && enabled
-              function keyboardActivate() { root.showOnScreen() }
-              width: actions.buttonWidth
-              bordered: true
-              text: strings.t("action.show")
-              iconText: "󰋚"
-              tooltipText: strings.t("action.show.tooltip")
-              enabled: root.entries.length > 0
-              hasCursor: root.cursorItem === showButton
-              foreground: root.foreground; fontFamily: root.fontFamily
-              fontSize: Style.font.bodySmall
-              onHovered: function(on) { if (on) root.setCursor(showButton) }
-              onClicked: root.showOnScreen()
-            }
+        // ---------- Actions ----------
+        Row {
+          id: actions
+          width: parent.width
+          spacing: Style.space(6)
+          readonly property real buttonWidth: (width - spacing * 2) / 3
 
-            Button {
-              id: clearButton
-              readonly property bool undoing: root.undoMarks !== null
-              readonly property bool keyboardEnabled: visible && enabled
-              function keyboardActivate() { undoing ? root.undo() : root.clearList() }
-              width: actions.buttonWidth
-              bordered: true
-              text: undoing ? strings.t("action.undo") : strings.t("action.clear")
-              iconText: undoing ? "󰕌" : "󰎟"
-              tooltipText: undoing ? strings.t("action.undo.tooltip") : strings.t("action.clear.tooltip")
-              enabled: undoing || root.kept.length > 0
-              hasCursor: root.cursorItem === clearButton
-              foreground: root.foreground; fontFamily: root.fontFamily
-              fontSize: Style.font.bodySmall
-              onHovered: function(on) { if (on) root.setCursor(clearButton) }
-              onClicked: keyboardActivate()
-            }
+          Button {
+            id: showButton
+            readonly property bool keyboardEnabled: visible && enabled
+            function keyboardActivate() { root.showOnScreen() }
+            width: actions.buttonWidth
+            bordered: true
+            text: strings.t("action.show")
+            iconText: "󰋚"
+            tooltipText: strings.t("action.show.tooltip")
+            enabled: root.entries.length > 0
+            hasCursor: root.cursorItem === showButton
+            foreground: root.foreground; fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            onHovered: function(on) { if (on) root.setCursor(showButton) }
+            onClicked: root.showOnScreen()
           }
 
-          Text {
-            textFormat: Text.PlainText
-            width: parent.width
-            text: strings.t("footer")
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            wrapMode: Text.WordWrap
+          Button {
+            id: readButton
+            readonly property bool keyboardEnabled: visible && enabled
+            function keyboardActivate() { root.readAll() }
+            width: actions.buttonWidth
+            bordered: true
+            text: strings.t("action.read")
+            iconText: "󰸞"
+            tooltipText: strings.t("action.read.tooltip")
+            enabled: Model.unreadCount(root.entries, root.marks, root.seenBefore) > 0 || root.missed > 0
+            hasCursor: root.cursorItem === readButton
+            foreground: root.foreground; fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            onHovered: function(on) { if (on) root.setCursor(readButton) }
+            onClicked: root.readAll()
           }
+
+          Button {
+            id: clearButton
+            readonly property bool undoing: root.undoMarks !== null
+            readonly property bool keyboardEnabled: visible && enabled
+            function keyboardActivate() { undoing ? root.undo() : root.clearList() }
+            width: actions.buttonWidth
+            bordered: true
+            text: undoing ? strings.t("action.undo") : strings.t("action.clear")
+            iconText: undoing ? "󰕌" : "󰎟"
+            tooltipText: undoing ? strings.t("action.undo.tooltip") : strings.t("action.clear.tooltip")
+            enabled: undoing || root.kept.length > 0
+            hasCursor: root.cursorItem === clearButton
+            foreground: root.foreground; fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            onHovered: function(on) { if (on) root.setCursor(clearButton) }
+            onClicked: keyboardActivate()
+          }
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: strings.t("footer")
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
         }
       }
     }

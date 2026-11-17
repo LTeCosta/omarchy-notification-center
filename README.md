@@ -26,7 +26,7 @@ The widget's default place is the right side of the bar; move it with `omarchy b
 - **󱅫** in the accent color, with a count beside it: notifications that timed out on screen, or arrived during Do Not Disturb, since you last opened the panel.
 - **󰂛** Do Not Disturb is on.
 
-A click opens the panel; a middle click toggles Do Not Disturb.
+A click opens the panel, a middle click toggles Do Not Disturb, and a right click marks everything read.
 
 ## The panel
 
@@ -40,9 +40,10 @@ Notifications are listed newest first under Today, Yesterday and Earlier, with t
 | Search field | `/` | Shows the notifications whose app, summary and text hold every word typed. Escape empties it, then leaves it; Down or Enter moves to the list |
 | App chips | `h` / `l`, `0`–`4` | All, or one of the four apps with the most notifications |
 | **Silence** | `d` | Do Not Disturb |
-| **Show on screen** | `r` | Puts the last six back on screen as cards, with their buttons |
+| **Replay** | `r` | Puts the last six back on screen as cards, with their buttons |
+| **Read all** | `a` | Marks every notification read: the bell's count, the missed tags and the new dots clear until another one closes |
 | **Clear all** | | Empties the list |
-| **Undo** | `u` | Brings back what the last removal or Clear all took |
+| **Undo** | `u` | Undoes the last removal, Clear all or Read all |
 
 `j` / `k` and the arrow keys move between items; Escape closes the panel.
 
@@ -64,7 +65,7 @@ An app's own actions, such as the chat a Teams card opens, end with the notifica
 
 ## What it stores
 
-Removing, clearing and the "last looked" time are kept in `~/.local/state/omarchy/io.github.ltecosta.notification-center/state.json` (directory mode 0700): two timestamps and the ids of removed notifications, never their text. Omarchy's history file is only read, so its replay shortcut (Super + Shift + Alt + ,) still has everything until it ages out.
+Removing, clearing, reading all and the "last looked" time are kept in `~/.local/state/omarchy/io.github.ltecosta.notification-center/state.json` (directory mode 0700): three timestamps and the ids of removed notifications, never their text. Omarchy's history file is only read, so its replay shortcut (Super + Shift + Alt + ,) still has everything until it ages out.
 
 Do Not Disturb and the replay go through Omarchy's notification service (`omarchy-shell notifications toggleDnd`, `showHistory`). Notification text is shown as plain text: markup is removed, and only theme icon names are looked up.
 
@@ -73,6 +74,7 @@ Do Not Disturb and the replay go through Omarchy's notification service (`omarch
 ```bash
 omarchy-shell io.github.ltecosta.notification-center toggle   # open, close, show, hide
 omarchy-shell io.github.ltecosta.notification-center state    # JSON for scripts and checks
+omarchy-shell io.github.ltecosta.notification-center readAll  # Read all, from a script or key binding
 ```
 
 Bind `toggle` to a key to open the panel from the keyboard.

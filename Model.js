@@ -164,19 +164,21 @@ function parseQuiet(text) {
   }
 }
 
-function emptyMarks() { return { seenTs: 0, clearedTs: 0, hidden: [] } }
+function emptyMarks() { return { seenTs: 0, clearedTs: 0, readTs: 0, hidden: [] } }
 
 // The panel's own state: when the list was last looked at, up to when it was
-// cleared (closed_ts seconds), and the ids removed one by one.
+// cleared and up to when it was all marked read (closed_ts seconds), and the
+// ids removed one by one.
 function parseState(text) {
   var state = emptyMarks()
   if (typeof text !== "string" || !text.trim() || text.length > 65536) return state
   try {
     var read = JSON.parse(text)
     if (!isObject(read) || read.schema !== STATE_SCHEMA) return state
-    var seen = finiteNumber(read.seen_ts), cleared = finiteNumber(read.cleared_ts)
+    var seen = finiteNumber(read.seen_ts), cleared = finiteNumber(read.cleared_ts), readTs = finiteNumber(read.read_ts)
     if (seen > 0) state.seenTs = seen
     if (cleared > 0) state.clearedTs = cleared
+    if (readTs > 0) state.readTs = readTs
     if (Array.isArray(read.hidden))
       state.hidden = read.hidden.filter(function(id) { return typeof id === "string" && id.length <= 128 })
         .slice(0, MAX_HIDDEN)
@@ -186,11 +188,11 @@ function parseState(text) {
 
 function serialiseState(state) {
   return JSON.stringify({ schema: STATE_SCHEMA, seen_ts: state.seenTs || 0, cleared_ts: state.clearedTs || 0,
-    hidden: state.hidden || [] }) + "\n"
+    read_ts: state.readTs || 0, hidden: state.hidden || [] }) + "\n"
 }
 
 function withMarks(state, change) {
-  var next = { seenTs: state.seenTs, clearedTs: state.clearedTs, hidden: state.hidden.slice() }
+  var next = { seenTs: state.seenTs, clearedTs: state.clearedTs, readTs: state.readTs, hidden: state.hidden.slice() }
   for (var key in change) next[key] = change[key]
   return next
 }
@@ -211,13 +213,36 @@ function kept(entries, state) {
   return entries.filter(function(entry) { return entry.closedTs > state.clearedTs && !hidden[entry.id] })
 }
 
-// Missed notifications in the list that closed after it was last looked at.
+// Missed notifications in the list that closed after it was last looked at
+// or marked read.
 function missedCount(entries, state) {
+  var rows = kept(entries, state)
+  var since = Math.max(state.seenTs, state.readTs)
+  var count = 0
+  for (var i = 0; i < rows.length; i++)
+    if (rows[i].missed && rows[i].closedTs > since) count++
+  return count
+}
+
+// Whether a row still shows as unread: a missed tag, or a new-row dot for
+// one that closed after `seenBefore`.
+function isUnread(entry, state, seenBefore) {
+  return entry.closedTs > state.readTs && (entry.missed || entry.closedTs > seenBefore)
+}
+
+function unreadCount(entries, state, seenBefore) {
   var rows = kept(entries, state)
   var count = 0
   for (var i = 0; i < rows.length; i++)
-    if (rows[i].missed && rows[i].closedTs > state.seenTs) count++
+    if (isUnread(rows[i], state, seenBefore)) count++
   return count
+}
+
+// Read all: every notification Omarchy holds now counts as seen and read.
+function markAllRead(state, entries) {
+  var newest = 0
+  for (var i = 0; i < entries.length; i++) newest = Math.max(newest, entries[i].closedTs)
+  return withMarks(state, { readTs: Math.max(state.readTs, newest), seenTs: Math.max(state.seenTs, newest) })
 }
 
 function filterLabel(app) {
@@ -260,7 +285,8 @@ function dayOf(closedTs, todayStart) {
 }
 
 // The rows the panel lists: kept, of the chosen app, matching the search, each
-// with its day and whether it opens that day's group and arrived since last seen.
+// with its day, whether it opens that day's group, whether it arrived since last
+// seen (`fresh`) and whether it still carries its missed tag (`unread`).
 function listed(entries, state, app, query, seenBefore, todayStart) {
   var out = [], lastDay = ""
   var rows = kept(entries, state)
@@ -270,7 +296,9 @@ function listed(entries, state, app, query, seenBefore, todayStart) {
     if (app !== "" && entry.app !== app) continue
     if (!matches(entry, words)) continue
     var day = dayOf(entry.closedTs, todayStart)
-    out.push({ entry: entry, day: day, firstOfDay: day !== lastDay, fresh: entry.closedTs > seenBefore })
+    var unreadAfter = entry.closedTs > state.readTs
+    out.push({ entry: entry, day: day, firstOfDay: day !== lastDay,
+      fresh: unreadAfter && entry.closedTs > seenBefore, unread: unreadAfter && entry.missed })
     lastDay = day
   }
   return out

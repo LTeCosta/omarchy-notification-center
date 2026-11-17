@@ -19,7 +19,7 @@ const row = (over = {}) => ({ key: "n1", app: "Teams for Linux", appIcon: "teams
   body: "Hello", source: "Teams for Linux", senderPid: 4242, execArgv: "", ts: NOW - 120, closed_ts: NOW - 60,
   closed_reason: "expired", urgency: 1, ...over })
 const history = rows => Model.parseHistory(JSON.stringify(rows)).entries
-const marks = (over = {}) => ({ seenTs: 0, clearedTs: 0, hidden: [], ...over })
+const marks = (over = {}) => ({ seenTs: 0, clearedTs: 0, readTs: 0, hidden: [], ...over })
 const win = (over = {}) => ({ address: "0xabc", class: "org.gnome.Nautilus", title: "Files", pid: 1, focusHistoryID: 3, ...over })
 const clients = list => Model.parseClients(JSON.stringify(list))
 
@@ -79,8 +79,9 @@ const tests = {
     assert.strictEqual(Model.parseQuiet("nope"), false)
   },
   "own state round-trips and rejects other schemas"() {
-    const state = Model.parseState(Model.serialiseState(marks({ seenTs: 10, clearedTs: 5, hidden: ["a@1"] })))
-    assert.deepStrictEqual(plain(state), { seenTs: 10, clearedTs: 5, hidden: ["a@1"] })
+    const state = Model.parseState(Model.serialiseState(marks({ seenTs: 10, clearedTs: 5, readTs: 7, hidden: ["a@1"] })))
+    assert.deepStrictEqual(plain(state), { seenTs: 10, clearedTs: 5, readTs: 7, hidden: ["a@1"] })
+    assert.strictEqual(Model.parseState("{\"schema\":1,\"seen_ts\":3}").readTs, 0)
     assert.deepStrictEqual(plain(Model.parseState("{\"schema\":2,\"seen_ts\":10}")), marks())
     assert.deepStrictEqual(plain(Model.parseState("{")), marks())
     assert.deepStrictEqual(plain(Model.parseState("{\"schema\":1,\"seen_ts\":\"x\",\"cleared_ts\":-4,\"hidden\":[1,\"b@2\"]}")),
@@ -118,6 +119,25 @@ const tests = {
     assert.deepStrictEqual(search("deploy vpn"), [])
     assert.strictEqual(search("teams").length, 3)
     assert.strictEqual(Model.listed(entries, marks(), "Teams for Linux", "tunnel", 0, TODAY).length, 0)
+  },
+  "read all clears tags, dots and the missed count up to the newest row"() {
+    const entries = history([row({ key: "a", closed_ts: NOW - 30 }), row({ key: "b", closed_ts: NOW - 300, closed_reason: "dismissed" })])
+    const before = marks()
+    assert.strictEqual(Model.missedCount(entries, before), 1)
+    assert.strictEqual(Model.unreadCount(entries, before, NOW - 3600), 2)
+    const read = Model.markAllRead(before, entries)
+    assert.deepStrictEqual([read.readTs, read.seenTs], [NOW - 30, NOW - 30])
+    assert.strictEqual(Model.missedCount(entries, read), 0)
+    assert.strictEqual(Model.unreadCount(entries, read, 0), 0)
+    const rows = Model.listed(entries, read, "", "", 0, TODAY)
+    assert.deepStrictEqual(plain(rows.map(r => [r.unread, r.fresh])), [[false, false], [false, false]])
+    // A notification closing after the mark is unread again.
+    const later = history([row({ key: "c", closed_ts: NOW + 10 })].concat([row({ key: "a", closed_ts: NOW - 30 })]))
+    assert.strictEqual(Model.missedCount(later, read), 1)
+    assert.deepStrictEqual(plain(Model.listed(later, read, "", "", NOW, TODAY).map(r => r.unread)), [true, false])
+    // The mark never moves back, and an empty history leaves it where it is.
+    assert.strictEqual(Model.markAllRead(marks({ readTs: NOW + 99, seenTs: NOW + 99 }), entries).readTs, NOW + 99)
+    assert.strictEqual(Model.markAllRead(marks({ readTs: 5 }), []).readTs, 5)
   },
   "filters list the busiest apps and need two of them"() {
     assert.deepStrictEqual(plain(Model.appFilters(history([row(), row({ key: "x" })]))), [])
