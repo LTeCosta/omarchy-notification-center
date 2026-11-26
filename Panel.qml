@@ -486,8 +486,11 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: Model.barIcon(root.missed, root.dnd)
-    labelText: root.setting("barLabel", "Missed") === "Missed" && root.missed > 0
-      ? Commons.I18n.formatNumber(root.missed) : ""
+    // A vertical bar has no room beside the bell; the tooltip still counts.
+    labelText: vertical ? "" : Model.barLabel(root.missed, root.setting("barLabel", "Missed") === "Missed",
+      function(count) { return Commons.I18n.formatNumber(count) })
+    // The slot widens by the number and its gap so it never covers its neighbours.
+    slotSize: Style.bar.iconSlot + (labelText !== "" ? Math.ceil(countMetrics.advanceWidth) + Style.space(4) : 0)
     tooltipText: root.tooltip()
     active: root.missed > 0 || root.dnd
     activeColor: Color.accent
@@ -496,6 +499,13 @@ Panel {
       else if (buttonCode === Qt.RightButton) root.readAll()
       else root.toggle()
     }
+  }
+
+  TextMetrics {
+    id: countMetrics
+    font.family: button.fontFamily
+    font.pixelSize: button.fontSize
+    text: button.labelText
   }
 
   KeyboardPanel {

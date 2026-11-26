@@ -445,3 +445,14 @@ function barIcon(missed, dnd) {
   if (dnd) return "󰂛"
   return missed > 0 ? "󱅫" : "󰂚"
 }
+
+// The most missed notifications the bar spells out; more read as "99+".
+var BAR_LABEL_MAX = 99
+
+// The number beside the bell, or "" when there is none to show. `format`
+// turns a number into the shell's digits.
+function barLabel(missed, show, format) {
+  var count = Math.floor(Number(missed))
+  if (!show || !(count > 0)) return ""
+  return count > BAR_LABEL_MAX ? format(BAR_LABEL_MAX) + "+" : format(count)
+}

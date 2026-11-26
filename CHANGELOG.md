@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- The bell widens to fit its missed count, so the number no longer covers the bar icons beside it; counts above 99 read **99+**, and a vertical bar shows the bell alone (the tooltip keeps the count).
+
 ## 1.1.0
 
 - **Read all** (the panel button, `a`, or a right-click on the bell) marks every notification as read: the bell's count, the missed tags and the new dots clear until another notification closes; `u` undoes it.

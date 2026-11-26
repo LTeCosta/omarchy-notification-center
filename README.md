@@ -23,7 +23,7 @@ The widget's default place is the right side of the bar; move it with `omarchy b
 ## The bell
 
 - **󰂚** nothing missed.
-- **󱅫** in the accent color, with a count beside it: notifications that timed out on screen, or arrived during Do Not Disturb, since you last opened the panel.
+- **󱅫** in the accent color, with a count beside it: notifications that timed out on screen, or arrived during Do Not Disturb, since you last opened the panel. The widget widens to fit the count, which stops at **99+**; a vertical bar shows only the bell and the tooltip gives the count.
 - **󰂛** Do Not Disturb is on.
 
 A click opens the panel, a middle click toggles Do Not Disturb, and a right click marks everything read.

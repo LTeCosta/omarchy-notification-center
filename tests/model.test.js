@@ -193,6 +193,14 @@ const tests = {
     assert.strictEqual(Model.omarchyGlyph("󰅍"), false)
     assert.deepStrictEqual([Model.barIcon(0, false), Model.barIcon(3, false), Model.barIcon(3, true)], ["󰂚", "󱅫", "󰂛"])
   },
+  "the bar label counts missed notifications up to 99+"() {
+    const format = n => "<" + n + ">"
+    assert.deepStrictEqual([0, -2, NaN, 1, 76, 99, 100, 4200].map(n => Model.barLabel(n, true, format)),
+      ["", "", "", "<1>", "<76>", "<99>", "<99>+", "<99>+"])
+    assert.strictEqual(Model.barLabel(76, false, format), "")
+    assert.strictEqual(Model.barLabel("<b>7</b>", true, format), "")
+    assert.strictEqual(Model.barLabel(2.7, true, format), "<2>")
+  },
   "the catalog holds every key the panel reads"() {
     const en = JSON.parse(fs.readFileSync(path.join(pluginDir, "i18n/en.json"), "utf8"))
     const qml = ["Panel.qml", "EntryRow.qml"].map(f => fs.readFileSync(path.join(pluginDir, f), "utf8")).join("\n")
