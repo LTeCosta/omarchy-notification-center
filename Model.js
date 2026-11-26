@@ -245,6 +245,53 @@ function markAllRead(state, entries) {
   return withMarks(state, { readTs: Math.max(state.readTs, newest), seenTs: Math.max(state.seenTs, newest) })
 }
 
+// Whether Read all has anything to clear for a panel that opened at
+// `seenBefore`: a row that still shows as unread, or a count on the bell.
+function canReadAll(entries, state, seenBefore) {
+  return unreadCount(entries, state, seenBefore) > 0 || missedCount(entries, state) > 0
+}
+
+// The seen mark a panel leaves as it opens or closes: now, or the newest row
+// when that one carries a later time.
+function seenMark(entries, now) {
+  return Math.max(now, entries.length ? entries[0].closedTs : 0)
+}
+
+// Clear all: every row Omarchy holds now leaves the list, and the removed ids
+// are no longer needed.
+function clearAll(state, entries) {
+  return withMarks(state, { clearedTs: entries.length ? entries[0].closedTs : state.clearedTs, hidden: [] })
+}
+
+// Undo puts back the marks from before a removal, Clear all or Read all, but
+// keeps the seen mark as it is now: the list was in view meanwhile.
+function restored(previous, current) {
+  return withMarks(previous, { seenTs: current.seenTs })
+}
+
+// ---------- Panels ----------
+
+// Which bar's panel answers for the `state` IPC method: the first open one,
+// else the first there is; -1 when no bar shows the widget.
+function reportingPanel(openFlags) {
+  for (var i = 0; i < openFlags.length; i++)
+    if (openFlags[i] === true) return i
+  return openFlags.length ? 0 : -1
+}
+
+// The `state` IPC answer. `shared` holds what every panel shows (opened is
+// whether any panel is open); `panel` holds the answering panel's own view,
+// or null without one, which reads as a closed panel with no filter.
+function stateReport(shared, panel) {
+  var marks = shared.marks
+  var view = panel || { listed: shared.entries, error: "", filter: "", query: "", searchFocused: false,
+    seenBefore: marks.seenTs, missedAtOpen: shared.missed }
+  return { opened: shared.opened === true, entries: shared.entries, listed: view.listed, missed: shared.missed,
+    dnd: shared.dnd === true, error: view.error || shared.error || "", filter: view.filter, query: view.query,
+    search_focused: view.searchFocused === true, hidden: marks.hidden.length, cleared_ts: marks.clearedTs,
+    seen_ts: marks.seenTs, read_ts: marks.readTs, seen_before: view.seenBefore, missed_at_open: view.missedAtOpen }
+}
+
 function filterLabel(app) {
   return app.length > MAX_FILTER_LABEL ? app.slice(0, MAX_FILTER_LABEL - 1) + "…" : app
 }

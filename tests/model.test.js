@@ -139,6 +139,53 @@ const tests = {
     assert.strictEqual(Model.markAllRead(marks({ readTs: NOW + 99, seenTs: NOW + 99 }), entries).readTs, NOW + 99)
     assert.strictEqual(Model.markAllRead(marks({ readTs: 5 }), []).readTs, 5)
   },
+  "read all needs an unread row for the panel or a count on the bell"() {
+    const entries = history([row({ key: "a", closed_ts: NOW - 30, closed_reason: "dismissed" }),
+      row({ key: "b", closed_ts: NOW - 300 })])
+    assert.strictEqual(Model.canReadAll(entries, marks(), 0), true)
+    // Nothing missed after the seen mark, but a dot for a panel opened earlier.
+    const seen = marks({ seenTs: NOW, readTs: NOW - 300 })
+    assert.strictEqual(Model.canReadAll(entries, seen, NOW - 100), true)
+    assert.strictEqual(Model.canReadAll(entries, seen, NOW), false)
+    // A missed tag still shows below the seen mark until read all.
+    assert.strictEqual(Model.canReadAll(entries, marks({ seenTs: NOW }), NOW), true)
+    assert.strictEqual(Model.canReadAll(entries, Model.markAllRead(marks(), entries), 0), false)
+    assert.strictEqual(Model.canReadAll([], marks(), 0), false)
+  },
+  "the seen mark is now, or the newest row when it is later"() {
+    const entries = history([row({ key: "a", closed_ts: NOW + 50 }), row({ key: "b", closed_ts: NOW - 300 })])
+    assert.strictEqual(Model.seenMark(entries, NOW), NOW + 50)
+    assert.strictEqual(Model.seenMark(entries, NOW + 99), NOW + 99)
+    assert.strictEqual(Model.seenMark([], NOW), NOW)
+  },
+  "clear all moves the clear mark to the newest row and undo keeps the seen mark"() {
+    const entries = history([row({ key: "a", closed_ts: NOW - 30 }), row({ key: "b", closed_ts: NOW - 300 })])
+    const before = marks({ seenTs: NOW - 400, readTs: NOW - 500, hidden: [entries[1].id] })
+    const cleared = Model.clearAll(before, entries)
+    assert.deepStrictEqual(plain(cleared), { seenTs: NOW - 400, clearedTs: NOW - 30, readTs: NOW - 500, hidden: [] })
+    assert.strictEqual(Model.kept(entries, cleared).length, 0)
+    assert.deepStrictEqual(plain(Model.clearAll(marks({ clearedTs: 7 }), [])), marks({ clearedTs: 7 }))
+    // Looking at the list after the change keeps counting as looking.
+    const back = Model.restored(before, Model.withMarks(cleared, { seenTs: NOW }))
+    assert.deepStrictEqual(plain(back), { seenTs: NOW, clearedTs: 0, readTs: NOW - 500, hidden: [entries[1].id] })
+    assert.deepStrictEqual(plain(before.hidden), [entries[1].id])
+  },
+  "the state answer comes from the first open panel, else the first one"() {
+    assert.strictEqual(Model.reportingPanel([]), -1)
+    assert.strictEqual(Model.reportingPanel([false, false]), 0)
+    assert.strictEqual(Model.reportingPanel([false, true, true]), 1)
+    const shared = { opened: true, entries: 4, missed: 2, dnd: true, error: "error.unreadable",
+      marks: marks({ seenTs: 30, clearedTs: 10, readTs: 20, hidden: ["a@1", "b@2"] }) }
+    const panel = { listed: 1, error: "error.service", filter: "Slack", query: "deploy", searchFocused: true,
+      seenBefore: 25, missedAtOpen: 3 }
+    assert.deepStrictEqual(plain(Model.stateReport(shared, panel)), { opened: true, entries: 4, listed: 1, missed: 2,
+      dnd: true, error: "error.service", filter: "Slack", query: "deploy", search_focused: true, hidden: 2,
+      cleared_ts: 10, seen_ts: 30, read_ts: 20, seen_before: 25, missed_at_open: 3 })
+    assert.strictEqual(Model.stateReport(shared, Object.assign({}, panel, { error: "" })).error, "error.unreadable")
+    assert.deepStrictEqual(plain(Model.stateReport(Object.assign({}, shared, { opened: false, error: "" }), null)),
+      { opened: false, entries: 4, listed: 4, missed: 2, dnd: true, error: "", filter: "", query: "",
+        search_focused: false, hidden: 2, cleared_ts: 10, seen_ts: 30, read_ts: 20, seen_before: 30, missed_at_open: 2 })
+  },
   "filters list the busiest apps and need two of them"() {
     assert.deepStrictEqual(plain(Model.appFilters(history([row(), row({ key: "x" })]))), [])
     const apps = ["A", "B", "B", "C", "C", "C", "D", "E", "A very long application name"]
@@ -203,7 +250,7 @@ const tests = {
   },
   "the catalog holds every key the panel reads"() {
     const en = JSON.parse(fs.readFileSync(path.join(pluginDir, "i18n/en.json"), "utf8"))
-    const qml = ["Panel.qml", "EntryRow.qml"].map(f => fs.readFileSync(path.join(pluginDir, f), "utf8")).join("\n")
+    const qml = ["Panel.qml", "Service.qml", "EntryRow.qml"].map(f => fs.readFileSync(path.join(pluginDir, f), "utf8")).join("\n")
     const used = new Set([...qml.matchAll(/strings\.tn?\("([a-z.]+[a-z])"[,)]/g)].map(m => m[1]))
     for (const key of ["error.unreadable", "error.service", "notice.removed", "notice.cleared", "notice.nothing",
       "reason.expired", "reason.silenced", "day.today", "day.yesterday", "day.earlier", "time.now", "time.minutes",

@@ -8,26 +8,26 @@ import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Notification Center bar widget. Reads the history Omarchy's notification
-// service keeps in ~/.local/state/omarchy/notifications/history.json, keeps its
-// own seen, cleared and removed marks beside it, and acts through the
-// service's IPC (`omarchy-shell notifications …`); Omarchy's files are only read.
+// Notification Center bar widget, one per monitor's bar. The history, the
+// marks, Do Not Disturb and the IPC target belong to the plugin's service
+// (Service.qml), built once for every bar; this widget keeps the bell and its
+// own panel: search, filter, cursor, expanded rows and the seen mark as it was
+// when the panel opened. Without the service it shows an empty list and sends
+// its actions over IPC.
 Panel {
   id: root
   moduleName: "io.github.ltecosta.notification-center"
-  ipcTarget: moduleName
+  // The service answers the plugin's IPC target.
   manageIpc: false
 
-  readonly property string home: Quickshell.env("HOME")
-  readonly property string serviceDir: home + "/.local/state/omarchy/notifications"
-  readonly property string stateDir: home + "/.local/state/omarchy/" + moduleName
+  readonly property var service: bar && bar.shell && typeof bar.shell.serviceFor === "function"
+    ? bar.shell.serviceFor(moduleName) : null
+  // The service this widget registered with, to leave it when either goes.
+  property var attachedService: null
 
-  property var history: ({ entries: [], error: "" })
-  property string historyText: "\u0000"
-  property bool dnd: false
-  property var marks: Model.emptyMarks()
-  property bool stateDirReady: false
-  property bool savePending: false
+  readonly property var history: service ? service.history : ({ entries: [], error: "" })
+  readonly property bool dnd: service ? service.dnd : false
+  readonly property var marks: service ? service.marks : Model.emptyMarks()
   // The seen mark as it was when the panel opened: newer rows get a dot.
   property real seenBefore: 0
   // The marks before the last removal, clear or read all, while it can be undone.
@@ -48,17 +48,14 @@ Panel {
   property bool wasOpened: false
   // The search field holds the keyboard only after / or a click on it.
   property bool searchWanted: false
-  // A reloaded or moved widget briefly overlaps its old instance; register
-  // the IPC target only after the old one has released it.
-  property bool ipcReady: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.4)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var entries: history.entries
-  readonly property var kept: Model.kept(entries, marks)
-  readonly property int missed: Model.missedCount(entries, marks)
+  readonly property var kept: service ? service.kept : []
+  readonly property int missed: service ? service.missed : 0
   readonly property int missedAtOpen: Model.missedCount(entries, Model.withMarks(marks, { seenTs: seenBefore }))
   readonly property var filters: Model.appFilters(kept)
   readonly property var rows: Model.listed(entries, marks, appFilter, query, seenBefore, todayStart)
@@ -81,17 +78,15 @@ Panel {
     todayStart = startOfToday()
   }
 
-  function refresh() {
-    historyFile.reload()
-    quietFile.reload()
-  }
+  // The plugin's IPC target, which the service answers, for when this bar
+  // cannot reach the service directly.
+  function ipc(args) { Quickshell.execDetached(["omarchy-shell", root.moduleName].concat(args)) }
 
-  function readHistory(text) {
-    // An unchanged file keeps the rows, so a periodic reread does not rebuild
-    // them under the pointer.
-    if (text === historyText) return
-    historyText = text
-    history = Model.parseHistory(text)
+  function attachService() {
+    if (attachedService === service) return
+    if (attachedService && typeof attachedService.detach === "function") attachedService.detach(root)
+    attachedService = service
+    if (attachedService) attachedService.attach(root)
   }
 
   function agoText(ts) {
@@ -131,76 +126,62 @@ Panel {
     errorKey = key
   }
 
-  // ---------- Own state ----------
-  function saveMarks() {
-    if (!stateDirReady) { savePending = true; return }
-    savePending = false
-    stateFile.setText(Model.serialiseState(marks))
-  }
-
-  function markSeen() {
-    var seen = Math.max(Date.now() / 1000, entries.length ? entries[0].closedTs : 0)
-    if (seen === marks.seenTs) return
-    marks = Model.withMarks(marks, { seenTs: seen })
-    saveMarks()
-  }
-
-  function rememberUndo() {
-    undoMarks = marks
+  // ---------- Marks ----------
+  // The service changes the shared marks and hands back the ones from before,
+  // which this panel keeps for its undo.
+  function rememberUndo(previous) {
+    undoMarks = previous
     undoSeenBefore = seenBefore
   }
 
   function readAll() {
-    if (Model.unreadCount(entries, marks, seenBefore) === 0 && missed === 0) return
-    rememberUndo()
-    marks = Model.markAllRead(marks, entries)
+    if (!service) { ipc(["readAll"]); return }
+    var previous = service.readAll(seenBefore)
+    if (!previous) return
+    rememberUndo(previous)
     seenBefore = Math.max(seenBefore, marks.readTs)
-    saveMarks()
     say("notice.read", 0)
   }
 
   function removeEntry(entry) {
-    if (!entry) return
+    if (!entry || !service) return
     var index = navigationItems().indexOf(cursorItem)
-    rememberUndo()
-    marks = Model.hide(marks, entry.id, entries)
-    saveMarks()
+    var previous = service.hide(entry.id)
+    if (!previous) return
+    rememberUndo(previous)
     say("notice.removed", 0)
     keepCursorAt(index)
   }
 
   function clearList() {
-    if (kept.length === 0) return
+    if (!service || kept.length === 0) return
     var count = kept.length
-    rememberUndo()
-    marks = Model.withMarks(marks, { clearedTs: entries[0].closedTs, hidden: [] })
+    var previous = service.clear()
+    if (!previous) return
+    rememberUndo(previous)
     appFilter = ""
-    saveMarks()
     say("notice.cleared", count)
     keepCursorAt(-1)
   }
 
   function undo() {
     if (!undoMarks) return
-    marks = Model.withMarks(undoMarks, { seenTs: marks.seenTs })
+    if (service) service.restore(undoMarks)
     seenBefore = undoSeenBefore
     undoMarks = null
-    saveMarks()
     say("", 0)
   }
 
   // ---------- Actions ----------
-  function callService(method) {
-    if (serviceCall.running) return
-    serviceCall.method = method
-    serviceCall.command = ["omarchy-shell", "notifications", method]
-    serviceCall.running = true
+  // Without the service, Omarchy's notification service is called directly.
+  function toggleDnd() {
+    if (service) service.toggleDnd(root)
+    else Quickshell.execDetached(["omarchy-shell", "notifications", "toggleDnd"])
   }
 
-  function toggleDnd() { callService("toggleDnd") }
-
   function showOnScreen() {
-    callService("showHistory")
+    if (service) service.showHistory(root)
+    else Quickshell.execDetached(["omarchy-shell", "notifications", "showHistory"])
     close()
   }
 
@@ -347,11 +328,10 @@ Panel {
     }
   }
 
-  function stateIpc() {
-    return JSON.stringify({ opened: opened, entries: kept.length, listed: rows.length, missed: missed, dnd: dnd,
-      error: errorKey || history.error, filter: appFilter, query: query, search_focused: searchField.activeFocus,
-      hidden: marks.hidden.length,
-      cleared_ts: marks.clearedTs, seen_ts: marks.seenTs, read_ts: marks.readTs, seen_before: seenBefore, missed_at_open: missedAtOpen })
+  // This panel's part of the service's `state` IPC answer.
+  function panelState() {
+    return { listed: rows.length, error: errorKey, filter: appFilter, query: query,
+      searchFocused: searchField.activeFocus, seenBefore: seenBefore, missedAtOpen: missedAtOpen }
   }
 
   implicitWidth: button.implicitWidth
@@ -369,106 +349,34 @@ Panel {
     undoMarks = null
     searchField.text = ""
     searchWanted = false
+    if (service) service.panelOpenChanged()
     if (opened) {
       tick()
-      refresh()
+      if (service) service.refresh()
       seenBefore = marks.seenTs
       expandedIds = ({})
       scroller.contentY = 0
     }
     // Opening marks what is listed as seen; closing marks what arrived meanwhile.
-    markSeen()
+    if (service) service.markSeen()
+  }
+
+  onServiceChanged: attachService()
+  Component.onCompleted: attachService()
+  Component.onDestruction: if (attachedService && typeof attachedService.detach === "function") attachedService.detach(root)
+
+  Connections {
+    target: root.service
+    function onCallFailed(_method, requester) { if (requester === root) root.fail("error.service") }
   }
 
   onFiltersChanged: if (appFilter !== "" && !filters.some(function(filter) { return filter.app === appFilter })) appFilter = ""
-
-  Component.onCompleted: makeStateDir.running = true
-
-  Timer {
-    interval: 150
-    running: true
-    onTriggered: root.ipcReady = true
-  }
-
-  ShellIpc {
-    enabled: root.ipcReady
-    target: root.ipcTarget
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function state(): string { return root.stateIpc() }
-    function readAll(): string { root.readAll(); return "ok" }
-  }
-
-  FileView {
-    id: historyFile
-    path: root.serviceDir + "/history.json"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.readHistory(text())
-    onLoadFailed: root.readHistory("")
-  }
-
-  FileView {
-    id: quietFile
-    path: root.serviceDir + "/quiet.json"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.dnd = Model.parseQuiet(text())
-    onLoadFailed: root.dnd = false
-  }
-
-  FileView {
-    id: stateFile
-    path: root.stateDir + "/state.json"
-    // Every bar (one per monitor) has its own panel; the file keeps their
-    // marks, and so their badges, the same.
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.marks = Model.parseState(text())
-  }
-
-  // The service rewrites its files atomically; the watch follows them, and a
-  // reread of a file that did not change costs nothing.
-  Timer {
-    interval: root.opened ? 10000 : 30000
-    running: true
-    repeat: true
-    onTriggered: root.refresh()
-  }
 
   Timer {
     interval: 30000
     running: root.opened
     repeat: true
     onTriggered: root.tick()
-  }
-
-  Process {
-    id: makeStateDir
-    command: ["mkdir", "-p", "-m", "0700", root.stateDir]
-    onExited: function(exitCode, _exitStatus) {
-      root.stateDirReady = exitCode === 0
-      if (root.stateDirReady && root.savePending) root.saveMarks()
-    }
-  }
-
-  Process {
-    id: serviceCall
-    property string method: ""
-    stdout: StdioCollector { id: serviceOut; waitForEnd: true }
-    onExited: function(exitCode, _exitStatus) {
-      Qt.callLater(function() {
-        if (exitCode !== 0) root.fail("error.service")
-        else if (serviceCall.method === "toggleDnd") root.dnd = serviceOut.text.trim() === "on"
-        quietFile.reload()
-      })
-    }
   }
 
   Process {
@@ -583,7 +491,7 @@ Panel {
                   id: dndSwitch
                   anchors.verticalCenter: parent.verticalCenter
                   checked: root.dnd
-                  busy: serviceCall.running && serviceCall.method === "toggleDnd"
+                  busy: root.service ? root.service.callMethod === "toggleDnd" : false
                   hasCursor: root.cursorItem === dndRow
                   foreground: root.foreground
                   onToggled: root.toggleDnd()
@@ -783,7 +691,7 @@ Panel {
             text: strings.t("action.read")
             iconText: "󰸞"
             tooltipText: strings.t("action.read.tooltip")
-            enabled: Model.unreadCount(root.entries, root.marks, root.seenBefore) > 0 || root.missed > 0
+            enabled: Model.canReadAll(root.entries, root.marks, root.seenBefore)
             hasCursor: root.cursorItem === readButton
             foreground: root.foreground; fontFamily: root.fontFamily
             fontSize: Style.font.bodySmall

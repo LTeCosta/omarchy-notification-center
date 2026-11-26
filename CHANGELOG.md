@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- A plugin service reads the history, the Do Not Disturb flag and the plugin's own marks once for every monitor's bar, instead of each bar watching and rereading them on its own; the bells and panels on every monitor bind to it.
+- The IPC target belongs to the service: `open`, `show` and `toggle` act on the focused monitor's panel and `close` and `hide` on the open one, `state` reports whether any panel is open, and `readAll` acts as the button in an open panel, so its undo is offered there. The second bar no longer logs that its IPC handler will not be used.
+
 ## 1.1.1
 
 - The bell widens to fit its missed count, so the number no longer covers the bar icons beside it; counts above 99 read **99+**, and a vertical bar shows the bell alone (the tooltip keeps the count).

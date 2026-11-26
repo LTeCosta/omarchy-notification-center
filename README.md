@@ -4,6 +4,8 @@ An [Omarchy](https://omarchy.org) bar widget for the notifications you did not c
 
 It reads what Omarchy's own notification service already stores and adds no daemon and no archive: the history stays Omarchy's, 100 notifications for at most 24 hours.
 
+The plugin is a bar widget and a shell service. The service (`Service.qml`) runs once, however many monitors have a bar: it watches the history, Do Not Disturb and the plugin's own state, keeps the marks and answers IPC. Each monitor's bell and panel (`Panel.qml`) bind to it, so every bell shows the same count, while each panel keeps its own search, filter and new-row dots.
+
 ## Requirements
 
 - Omarchy 4.5 or later, with its built-in notification service (`omarchy.notifications`), which writes `~/.local/state/omarchy/notifications/history.json`.
@@ -77,17 +79,18 @@ omarchy-shell io.github.ltecosta.notification-center state    # JSON for scripts
 omarchy-shell io.github.ltecosta.notification-center readAll  # Read all, from a script or key binding
 ```
 
-Bind `toggle` to a key to open the panel from the keyboard.
+The service answers the target. `open`, `show` and `toggle` act on the panel of the focused monitor and `close` and `hide` on the open one, through `omarchy-shell shell summon|hide|toggle`. `state` reports the shared counts and marks, whether any panel is open, and the search, filter and seen mark of the open panel (or of the first bar's panel when none is open). `readAll` acts as the button in an open panel, which then offers its undo. Bind `toggle` to a key to open the panel from the keyboard.
 
 ## Development
 
-The parsing, search, filtering and opening rules are in `Model.js`, a QML JavaScript library that runs in Node as well:
+The parsing, search, filtering, marking and opening rules are in `Model.js`, a QML JavaScript library that runs in Node as well:
 
 ```bash
 node --test
+bash tests/service.smoke.sh   # the service and two bars' widgets in a headless Quickshell
 ```
 
-QML changes take effect after `omarchy-restart-shell`.
+The smoke test runs in a temporary home with a fake `omarchy-shell` and skips itself without `qs` or the Omarchy shell kit. QML changes take effect after `omarchy-restart-shell`.
 
 ## License
 
