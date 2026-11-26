@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "Model.js" as Model
+import "ServiceLink.js" as ServiceLink
 
 // Notification Center's shared half, built once however many bars there are.
 // It reads the history Omarchy's notification service keeps in
@@ -14,7 +15,9 @@ import "Model.js" as Model
 // Each monitor's bar widget (Panel.qml) binds to this object and keeps only its
 // own panel: the list's search, filter, cursor and the seen mark as it was when
 // that panel opened. A widget registers here so `state` can report its panel
-// and the history is reread more often while any panel is open.
+// and the history is reread more often while any panel is open. Widgets under
+// a replacement bar, whose shell has no services, find this object through
+// ServiceLink.js, where it registers itself.
 Scope {
   id: root
 
@@ -169,7 +172,11 @@ Scope {
       error: history.error, marks: marks }, at >= 0 ? live[at].panelState() : null))
   }
 
-  Component.onCompleted: makeStateDir.running = true
+  Component.onCompleted: {
+    makeStateDir.running = true
+    ServiceLink.register(root)
+  }
+  Component.onDestruction: ServiceLink.unregister(root)
 
   Timer {
     interval: 150

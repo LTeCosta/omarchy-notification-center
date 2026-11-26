@@ -6,6 +6,8 @@ It reads what Omarchy's own notification service already stores and adds no daem
 
 The plugin is a bar widget and a shell service. The service (`Service.qml`) runs once, however many monitors have a bar: it watches the history, Do Not Disturb and the plugin's own state, keeps the marks and answers IPC. Each monitor's bell and panel (`Panel.qml`) bind to it, so every bell shows the same count, while each panel keeps its own search, filter and new-row dots.
 
+The widget works under Omarchy's built-in bar and under replacement bars. The built-in bar's shell hands a widget its plugin's service; a replacement bar's shell has no services, so the service also registers itself in `ServiceLink.js`, a script every QML file of the plugin shares, and the widget takes it from there. A service that starts later, is reloaded or stops is followed at once; until one runs, the bell shows nothing missed and the panel an empty list.
+
 ## Requirements
 
 - Omarchy 4.5 or later, with its built-in notification service (`omarchy.notifications`), which writes `~/.local/state/omarchy/notifications/history.json`.
@@ -87,7 +89,7 @@ The parsing, search, filtering, marking and opening rules are in `Model.js`, a Q
 
 ```bash
 node --test
-bash tests/service.smoke.sh   # the service and two bars' widgets in a headless Quickshell
+bash tests/service.smoke.sh   # the service, two bars' widgets and a replacement bar's in a headless Quickshell
 ```
 
 The smoke test runs in a temporary home with a fake `omarchy-shell` and skips itself without `qs` or the Omarchy shell kit. QML changes take effect after `omarchy-restart-shell`.

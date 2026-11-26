@@ -7,12 +7,15 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
+import "ServiceLink.js" as ServiceLink
 
 // Notification Center bar widget, one per monitor's bar. The history, the
 // marks, Do Not Disturb and the IPC target belong to the plugin's service
 // (Service.qml), built once for every bar; this widget keeps the bell and its
 // own panel: search, filter, cursor, expanded rows and the seen mark as it was
-// when the panel opened. Without the service it shows an empty list and sends
+// when the panel opened. It reaches the service through the bar's shell under
+// the built-in bar and through ServiceLink.js under a replacement bar, whose
+// shell has no services. Without a service it shows an empty list and sends
 // its actions over IPC.
 Panel {
   id: root
@@ -20,8 +23,12 @@ Panel {
   // The service answers the plugin's IPC target.
   manageIpc: false
 
-  readonly property var service: bar && bar.shell && typeof bar.shell.serviceFor === "function"
+  readonly property var shellService: bar && bar.shell && typeof bar.shell.serviceFor === "function"
     ? bar.shell.serviceFor(moduleName) : null
+  // The service ServiceLink.js holds, kept current by linkListener.
+  property var linkedService: null
+  property var linkListener: null
+  readonly property var service: shellService || linkedService
   // The service this widget registered with, to leave it when either goes.
   property var attachedService: null
 
@@ -362,8 +369,17 @@ Panel {
   }
 
   onServiceChanged: attachService()
-  Component.onCompleted: attachService()
-  Component.onDestruction: if (attachedService && typeof attachedService.detach === "function") attachedService.detach(root)
+  Component.onCompleted: {
+    // One function object, so unsubscribe finds the one subscribed.
+    linkListener = function(next) { root.linkedService = next }
+    ServiceLink.subscribe(linkListener)
+    linkedService = ServiceLink.current()
+    attachService()
+  }
+  Component.onDestruction: {
+    ServiceLink.unsubscribe(linkListener)
+    if (attachedService && typeof attachedService.detach === "function") attachedService.detach(root)
+  }
 
   Connections {
     target: root.service

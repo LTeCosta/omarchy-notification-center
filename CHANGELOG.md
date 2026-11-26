@@ -3,6 +3,7 @@
 ## 1.2.0
 
 - A plugin service reads the history, the Do Not Disturb flag and the plugin's own marks once for every monitor's bar, instead of each bar watching and rereading them on its own; the bells and panels on every monitor bind to it.
+- The bell and panel reach the service under Omarchy's built-in bar and under replacement bars, whose shell offers no services: the service also registers itself in the plugin's `ServiceLink.js`, and the widget follows it when it starts later, is reloaded or stops.
 - The IPC target belongs to the service: `open`, `show` and `toggle` act on the focused monitor's panel and `close` and `hide` on the open one, `state` reports whether any panel is open, and `readAll` acts as the button in an open panel, so its undo is offered there. The second bar no longer logs that its IPC handler will not be used.
 
 ## 1.1.1

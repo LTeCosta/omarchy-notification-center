@@ -5,7 +5,9 @@
 # both bells bind to the one service, that only it registers the IPC target,
 # the per-panel seen mark and undo, the `state` and `readAll` IPC answers, the
 # routing of open, close and toggle through the shell, Do Not Disturb and its
-# failure, the state file, a rebuilt bar and a widget without the service.
+# failure, the state file, a rebuilt bar, a widget under a replacement bar
+# (whose shell has no services) reaching the service through ServiceLink.js,
+# a service reload, and that widget once no service is left.
 #
 # Everything runs in a temporary home with a fake omarchy-shell first on PATH;
 # the live shell, the real state directory and Hyprland are never touched.

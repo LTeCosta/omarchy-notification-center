@@ -2,10 +2,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "ServiceLink.js" as ServiceLink
 
 // Driver for service.smoke.sh: one Service and two bar widgets (two monitors)
-// on stand-in bars that reach it through shell.serviceFor, a fake
-// omarchy-shell first on PATH. Prints "SMOKE ok - ..." or "SMOKE not ok - ..."
+// on stand-in bars that reach it through shell.serviceFor, a widget on a
+// stand-in replacement bar whose shell has no services, and a second Service
+// standing for a reload; a fake omarchy-shell first on PATH. Prints "SMOKE ok - ..." or "SMOKE not ok - ..."
 // per assertion and "SMOKE done <failures>" at the end.
 ShellRoot {
   id: root
@@ -21,6 +23,8 @@ ShellRoot {
   property var waiting: null
   property var waitDeadline: 0
   property real seenAtClose: 0
+  property var bare: null
+  property var fresh: null
 
   Service { id: service }
 
@@ -44,6 +48,11 @@ ShellRoot {
       function switchPanelFrom(_item, _direction) { return false }
       Component.onCompleted: shell.lookup = this
     }
+  }
+
+  Component {
+    id: serviceComponent
+    Service { }
   }
 
   Component {
@@ -240,20 +249,57 @@ ShellRoot {
       })
     } },
 
-    { name: "without the service", run: function() {
-      var seen = service.marks.seenTs
-      var bare = panelComponent.createObject(root, { bar: root.bareBar })
-      root.check(bare.service === null && bare.missed === 0 && bare.kept.length === 0 && bare.dnd === false, "the widget shows an empty list")
+    { name: "under a replacement bar", run: function() {
+      // bareBar's shell answers serviceFor() with null, as a replacement bar's does.
+      root.bare = panelComponent.createObject(root, { bar: root.bareBar })
+      var bare = root.bare
+      root.check(bare.shellService === null && bare.service === service && service.panels.indexOf(bare) >= 0,
+        "a widget whose bar has no services binds to the service through the link")
+      root.check(bare.missed === service.missed && bare.kept.length === 3 && bare.dnd === service.dnd,
+        "it shows the service's history and Do Not Disturb")
+      root.left.removeEntry(service.entries[0])
+      root.check(bare.kept.length === 2, "it follows a change made on another monitor")
+      root.left.undo()
       bare.open()
-      bare.readAll()
-      bare.clearList()
+      root.check(service.openCount === 1 && root.stateIpc().opened === true, "its panel counts as open")
       bare.close()
-      root.check(service.panels.length === 2 && service.marks.seenTs === seen && service.kept.length === 3,
-        "it leaves the service alone")
-      root.exec(["sh", "-c", "sleep 0.5; cat \"$1\"", "sh", root.fakeDir + "/calls"], function(calls) {
-        root.check(calls.indexOf(root.pluginId + " readAll") >= 0, "its actions go over IPC")
-        bare.destroy()
+      root.next()
+    } },
+
+    { name: "a reloaded service", run: function() {
+      var bare = root.bare
+      root.fresh = serviceComponent.createObject(root)
+      var fresh = root.fresh
+      root.check(ServiceLink.current() === fresh && bare.service === fresh, "the widget follows the new service")
+      root.check(fresh.panels.indexOf(bare) >= 0 && service.panels.indexOf(bare) < 0, "and moves its registration to it")
+      root.check(root.left.service === service, "a widget on the built-in bar keeps its shell's service")
+      ServiceLink.unregister(service)
+      root.check(ServiceLink.current() === fresh, "the old service leaving afterwards does not clear the link")
+      root.waitFor(function() { return fresh.entries.length === 3 && fresh.marks.seenTs > 0 }, 5000, "the new service to load", function() {
+        root.check(bare.kept.length === 3 && bare.missed === fresh.missed, "the widget shows the new service's state")
         root.next()
+      })
+    } },
+
+    { name: "the service gone", run: function() {
+      var bare = root.bare
+      var seen = service.marks.seenTs
+      root.fresh.destroy()
+      root.waitFor(function() { return bare.service === null }, 2000, "the widget to let go", function() {
+        root.check(ServiceLink.current() === null && bare.missed === 0 && bare.kept.length === 0 && bare.dnd === false,
+          "the widget falls back to an empty list")
+        bare.open()
+        bare.readAll()
+        bare.clearList()
+        bare.close()
+        root.check(service.marks.seenTs === seen && service.kept.length === 3, "it leaves the remaining service alone")
+        root.exec(["sh", "-c", "sleep 0.5; cat \"$1\"", "sh", root.fakeDir + "/calls"], function(calls) {
+          root.check(calls.indexOf(root.pluginId + " readAll") >= 0, "its actions go over IPC")
+          ServiceLink.register(service)
+          root.check(bare.service === service && service.panels.indexOf(bare) >= 0, "a service that starts later is picked up")
+          bare.destroy()
+          root.next()
+        })
       })
     } }
   ]
