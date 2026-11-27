@@ -102,6 +102,24 @@ ShellRoot {
     }
   }
 
+  // then(text, saved) once state.json holds the service's marks, or after 5 s.
+  // FileView writes asynchronously, so a change made just before may land later.
+  function whenStateSaved(then) {
+    var deadline = Date.now() + 5000
+    var read = function() {
+      exec(["sh", "-c", "sleep 0.1; cat \"$1\"", "sh", stateDir + "/state.json"], function(text) {
+        var file = {}
+        try { file = JSON.parse(text) } catch (error) {}
+        var marks = service.marks
+        var saved = file.schema === 1 && file.seen_ts === marks.seenTs && file.read_ts === marks.readTs
+          && file.cleared_ts === marks.clearedTs && JSON.stringify(file.hidden) === JSON.stringify(marks.hidden)
+        if (!saved && Date.now() < deadline) read()
+        else then(text, saved)
+      })
+    }
+    read()
+  }
+
   // then() once predicate() holds; a check fails after `ms` otherwise.
   function waitFor(predicate, ms, what, then) {
     waitDeadline = Date.now() + ms
@@ -228,11 +246,8 @@ ShellRoot {
     } },
 
     { name: "state file", run: function() {
-      root.exec(["cat", root.stateDir + "/state.json"], function(text) {
-        var saved = {}
-        try { saved = JSON.parse(text) } catch (error) {}
-        root.check(saved.schema === 1 && saved.seen_ts === service.marks.seenTs && saved.read_ts === 0 && saved.cleared_ts === 0,
-          "the service wrote the marks (" + text.trim() + ")")
+      root.whenStateSaved(function(text, saved) {
+        root.check(saved, "the service wrote the marks (" + text.trim() + ")")
         root.next()
       })
     } },
@@ -267,17 +282,19 @@ ShellRoot {
     } },
 
     { name: "a reloaded service", run: function() {
-      var bare = root.bare
-      root.fresh = serviceComponent.createObject(root)
-      var fresh = root.fresh
-      root.check(ServiceLink.current() === fresh && bare.service === fresh, "the widget follows the new service")
-      root.check(fresh.panels.indexOf(bare) >= 0 && service.panels.indexOf(bare) < 0, "and moves its registration to it")
-      root.check(root.left.service === service, "a widget on the built-in bar keeps its shell's service")
-      ServiceLink.unregister(service)
-      root.check(ServiceLink.current() === fresh, "the old service leaving afterwards does not clear the link")
-      root.waitFor(function() { return fresh.entries.length === 3 && fresh.marks.seenTs > 0 }, 5000, "the new service to load", function() {
-        root.check(bare.kept.length === 3 && bare.missed === fresh.missed, "the widget shows the new service's state")
-        root.next()
+      root.whenStateSaved(function() {
+        var bare = root.bare
+        root.fresh = serviceComponent.createObject(root)
+        var fresh = root.fresh
+        root.check(ServiceLink.current() === fresh && bare.service === fresh, "the widget follows the new service")
+        root.check(fresh.panels.indexOf(bare) >= 0 && service.panels.indexOf(bare) < 0, "and moves its registration to it")
+        root.check(root.left.service === service, "a widget on the built-in bar keeps its shell's service")
+        ServiceLink.unregister(service)
+        root.check(ServiceLink.current() === fresh, "the old service leaving afterwards does not clear the link")
+        root.waitFor(function() { return fresh.entries.length === 3 && fresh.marks.seenTs > 0 }, 5000, "the new service to load", function() {
+          root.check(bare.kept.length === 3 && bare.missed === fresh.missed, "the widget shows the new service's state")
+          root.next()
+        })
       })
     } },
 
