@@ -15,12 +15,12 @@ The widget works under Omarchy's built-in bar and under replacement bars. The bu
 
 ## Install
 
-From a checkout of this repository:
-
 ```bash
-scripts/install notification-center
+omarchy plugin add https://github.com/LTeCosta/omarchy-notification-center.git
 omarchy plugin enable io.github.ltecosta.notification-center
 ```
+
+Update it with `omarchy plugin update io.github.ltecosta.notification-center`.
 
 The widget's default place is the right side of the bar; move it with `omarchy bar move io.github.ltecosta.notification-center --section <section>`.
 
@@ -85,9 +85,10 @@ The service answers the target. `open`, `show` and `toggle` act on the panel of 
 
 ## Development
 
-The parsing, search, filtering, marking and opening rules are in `Model.js`, a QML JavaScript library that runs in Node as well:
+The parsing, search, filtering, marking and opening rules are in `Model.js`, a QML JavaScript library that runs in Node as well. `scripts/check`, run from the repository root, validates the plugin and runs all its tests; they also run on their own:
 
 ```bash
+scripts/check
 node --test
 bash tests/service.smoke.sh   # the service, two bars' widgets and a replacement bar's in a headless Quickshell
 ```
